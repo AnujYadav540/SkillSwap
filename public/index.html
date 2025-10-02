@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillSwap - Peer-to-Peer Learning Platform</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <h1>SkillSwap</h1>
+            </div>
+            <div class="nav-links" id="navLinks">
+                <a href="#" id="loginLink">Login</a>
+                <a href="#" id="signupLink">Sign Up</a>
+                <a href="#" id="dashboardLink" style="display: none;">Dashboard</a>
+                <a href="#" id="logoutLink" style="display: none;">Logout</a>
+            </div>
+        </nav>
+
+        <!-- Welcome Section -->
+        <section class="hero" id="heroSection">
+            <div class="hero-content">
+                <h2>Learn Skills, Share Knowledge</h2>
+                <p>Connect with peers to exchange skills and knowledge in a collaborative learning environment.</p>
+                <div class="hero-buttons">
+                    <button class="btn btn-primary" id="getStartedBtn">Get Started</button>
+                    <button class="btn btn-secondary" id="learnMoreBtn">Learn More</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Login Form -->
+        <section class="form-section" id="loginSection" style="display: none;">
+            <div class="form-container">
+                <h2>Login to SkillSwap</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="loginUsername">Username or Email:</label>
+                        <input type="text" id="loginUsername" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password:</label>
+                        <input type="password" id="loginPassword" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <p class="form-switch">Don't have an account? <a href="#" id="switchToSignup">Sign up here</a></p>
+                </form>
+                <div id="loginError" class="error-message"></div>
+            </div>
+        </section>
+
+        <!-- Signup Form -->
+        <section class="form-section" id="signupSection" style="display: none;">
+            <div class="form-container">
+                <h2>Join SkillSwap</h2>
+                <form id="signupForm">
+                    <div class="form-group">
+                        <label for="signupUsername">Username:</label>
+                        <input type="text" id="signupUsername" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupEmail">Email:</label>
+                        <input type="email" id="signupEmail" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupPassword">Password:</label>
+                        <input type="password" id="signupPassword" name="password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signupBio">Bio (Optional):</label>
+                        <textarea id="signupBio" name="bio" rows="3" placeholder="Tell us about yourself..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                    <p class="form-switch">Already have an account? <a href="#" id="switchToLogin">Login here</a></p>
+                </form>
+                <div id="signupError" class="error-message"></div>
+            </div>
+        </section>
+
+        <!-- Dashboard -->
+        <section class="dashboard" id="dashboardSection" style="display: none;">
+            <div class="dashboard-header">
+                <h2>Welcome, <span id="userWelcome"></span>!</h2>
+                <div class="dashboard-nav">
+                    <button class="tab-btn active" data-tab="profile">Profile</button>
+                    <button class="tab-btn" data-tab="skills">My Skills</button>
+                    <button class="tab-btn" data-tab="matches">Find Matches</button>
+                    <button class="tab-btn" data-tab="bookings">Bookings</button>
+                    <button class="tab-btn" data-tab="chat">Messages</button>
+                </div>
+            </div>
+
+            <!-- Profile Tab -->
+            <div class="tab-content active" id="profileTab">
+                <div class="profile-info">
+                    <h3>Your Profile</h3>
+                    <div class="profile-details">
+                        <p><strong>Username:</strong> <span id="profileUsername"></span></p>
+                        <p><strong>Email:</strong> <span id="profileEmail"></span></p>
+                        <p><strong>Rating:</strong> <span id="profileRating"></span> ⭐</p>
+                        <p><strong>Bio:</strong> <span id="profileBio"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skills Tab -->
+            <div class="tab-content" id="skillsTab">
+                <div class="skills-section">
+                    <h3>Add New Skill</h3>
+                    <form id="skillForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="skillName">Skill Name:</label>
+                                <input type="text" id="skillName" name="skill_name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="skillType">Type:</label>
+                                <select id="skillType" name="type" required>
+                                    <option value="">Select type</option>
+                                    <option value="teach">I can teach this</option>
+                                    <option value="learn">I want to learn this</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="skillDescription">Description (Optional):</label>
+                            <textarea id="skillDescription" name="description" rows="2"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Add Skill</button>
+                    </form>
+                    <div id="skillError" class="error-message"></div>
+                </div>
+
+                <div class="skills-list">
+                    <div class="skills-column">
+                        <h4>Skills I Can Teach</h4>
+                        <div id="teachSkills" class="skills-container"></div>
+                    </div>
+                    <div class="skills-column">
+                        <h4>Skills I Want to Learn</h4>
+                        <div id="learnSkills" class="skills-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Matches Tab -->
+            <div class="tab-content" id="matchesTab">
+                <h3>Your Skill Matches</h3>
+                <div id="matchesList" class="matches-container"></div>
+            </div>
+
+            <!-- Bookings Tab -->
+            <div class="tab-content" id="bookingsTab">
+                <h3>Your Bookings</h3>
+                <div id="bookingsList" class="bookings-container"></div>
+            </div>
+
+            <!-- Chat Tab -->
+            <div class="tab-content" id="chatTab">
+                <h3>Messages</h3>
+                <div class="chat-container">
+                    <div class="chat-sidebar">
+                        <h4>Conversations</h4>
+                        <div id="conversationsList"></div>
+                    </div>
+                    <div class="chat-main">
+                        <div id="chatMessages" class="chat-messages">
+                            <p>Select a conversation to start chatting</p>
+                        </div>
+                        <div id="chatInput" class="chat-input" style="display: none;">
+                            <input type="text" id="messageInput" placeholder="Type your message...">
+                            <button id="sendMessageBtn" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Booking Modal -->
+        <div id="bookingModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>Request a Session</h3>
+                <form id="bookingForm">
+                    <input type="hidden" id="bookingReceiverId">
+                    <div class="form-group">
+                        <label for="bookingSkill">Skill:</label>
+                        <input type="text" id="bookingSkill" name="skill" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="bookingDate">Preferred Date/Time (Optional):</label>
+                        <input type="datetime-local" id="bookingDate" name="session_date">
+                    </div>
+                    <div class="form-group">
+                        <label for="bookingNotes">Notes (Optional):</label>
+                        <textarea id="bookingNotes" name="notes" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Send Request</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <!-- Socket.IO -->
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- Main JavaScript -->
+    <script src="js/app.js"></script>
+</body>
+</html>
