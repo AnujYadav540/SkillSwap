@@ -103,7 +103,36 @@
                         <p><strong>Email:</strong> <span id="profileEmail"></span></p>
                         <p><strong>Rating:</strong> <span id="profileRating"></span> ⭐</p>
                         <p><strong>Bio:</strong> <span id="profileBio"></span></p>
+                        <p><strong>Location:</strong> <span id="profileLocation">Not set</span></p>
                     </div>
+                    
+                    <h3 style="margin-top: 30px;">Update Profile</h3>
+                    <form id="profileForm">
+                        <div class="form-group">
+                            <label for="profileBioEdit">Bio:</label>
+                            <textarea id="profileBioEdit" name="bio" rows="3"></textarea>
+                        </div>
+                        
+                        <h4>Location Settings</h4>
+                        <div class="location-controls">
+                            <button type="button" class="btn btn-secondary" id="getLocationBtn">📍 Use Current Location</button>
+                            <span id="locationStatus"></span>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="profileCity">City:</label>
+                                <input type="text" id="profileCity" name="city" placeholder="Enter city">
+                            </div>
+                            <div class="form-group">
+                                <label for="profileCountry">Country:</label>
+                                <input type="text" id="profileCountry" name="country" placeholder="Enter country">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Update Profile</button>
+                    </form>
+                    <div id="profileError" class="error-message"></div>
                 </div>
             </div>
 
@@ -185,6 +214,7 @@
             <div class="modal-content">
                 <span class="close">&times;</span>
                 <h3>Request a Session</h3>
+                <div id="sessionModeInfo" style="padding: 10px; background: #f0f0f0; margin-bottom: 15px; border-radius: 5px;"></div>
                 <form id="bookingForm">
                     <input type="hidden" id="bookingReceiverId">
                     <div class="form-group">
@@ -197,9 +227,29 @@
                     </div>
                     <div class="form-group">
                         <label for="bookingNotes">Notes (Optional):</label>
-                        <textarea id="bookingNotes" name="notes" rows="3"></textarea>
+                        <textarea id="bookingNotes" name="notes" rows="3" placeholder="Add any notes or mention if you prefer online/offline session..."></textarea>
                     </div>
                     <button type="submit" class="btn btn-primary">Send Request</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit Skill Modal -->
+        <div id="editSkillModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" id="closeEditSkill">&times;</span>
+                <h3>Edit Skill</h3>
+                <form id="editSkillForm">
+                    <input type="hidden" id="editSkillId">
+                    <div class="form-group">
+                        <label for="editSkillName">Skill Name:</label>
+                        <input type="text" id="editSkillName" name="skill_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editSkillDescription">Description:</label>
+                        <textarea id="editSkillDescription" name="description" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Skill</button>
                 </form>
             </div>
         </div>

@@ -5,6 +5,8 @@ class SkillSwapApp {
         this.authToken = localStorage.getItem('skillswap_token');
         this.socket = null;
         this.currentChatUser = null;
+        this.userLocation = { latitude: null, longitude: null };
+        this.currentMatchData = null;
         
         this.init();
     }
@@ -108,7 +110,11 @@ class SkillSwapApp {
 
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
-                this.closeModal();
+                if (e.target.id === 'bookingModal') {
+                    this.closeModal();
+                } else if (e.target.id === 'editSkillModal') {
+                    this.closeEditSkillModal();
+                }
             }
         });
 
@@ -121,6 +127,26 @@ class SkillSwapApp {
             if (e.key === 'Enter') {
                 this.sendMessage();
             }
+        });
+
+        // Profile form
+        document.getElementById('profileForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleProfileUpdate(e);
+        });
+
+        document.getElementById('getLocationBtn').addEventListener('click', () => {
+            this.getCurrentLocation();
+        });
+
+        // Edit skill modal
+        document.getElementById('closeEditSkill').addEventListener('click', () => {
+            this.closeEditSkillModal();
+        });
+
+        document.getElementById('editSkillForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleEditSkill(e);
         });
     }
 
@@ -287,6 +313,98 @@ class SkillSwapApp {
         document.getElementById('profileEmail').textContent = this.currentUser.email;
         document.getElementById('profileRating').textContent = this.currentUser.rating || '0.00';
         document.getElementById('profileBio').textContent = this.currentUser.bio || 'No bio provided';
+        
+        // Load location info
+        if (this.currentUser.city || this.currentUser.country) {
+            const location = [this.currentUser.city, this.currentUser.country].filter(Boolean).join(', ');
+            document.getElementById('profileLocation').textContent = location;
+        } else {
+            document.getElementById('profileLocation').textContent = 'Not set';
+        }
+        
+        // Populate edit form
+        document.getElementById('profileBioEdit').value = this.currentUser.bio || '';
+        document.getElementById('profileCity').value = this.currentUser.city || '';
+        document.getElementById('profileCountry').value = this.currentUser.country || '';
+        
+        // Store user location
+        this.userLocation.latitude = this.currentUser.latitude;
+        this.userLocation.longitude = this.currentUser.longitude;
+    }
+
+    // Get current location using browser geolocation
+    getCurrentLocation() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser');
+            return;
+        }
+
+        document.getElementById('locationStatus').textContent = 'Getting location...';
+        
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                this.userLocation.latitude = lat;
+                this.userLocation.longitude = lon;
+                
+                // Reverse geocode to get city and country
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+                    const data = await response.json();
+                    
+                    document.getElementById('profileCity').value = data.address.city || data.address.town || data.address.village || '';
+                    document.getElementById('profileCountry').value = data.address.country || '';
+                    document.getElementById('locationStatus').textContent = '✓ Location detected';
+                    
+                } catch (error) {
+                    console.error('Geocoding error:', error);
+                    document.getElementById('locationStatus').textContent = '✓ Coordinates saved';
+                }
+            },
+            (error) => {
+                console.error('Geolocation error:', error);
+                document.getElementById('locationStatus').textContent = '✗ Could not get location';
+                alert('Unable to retrieve your location. Please enter manually.');
+            }
+        );
+    }
+
+    // Handle profile update
+    async handleProfileUpdate(e) {
+        const formData = new FormData(e.target);
+        const profileData = {
+            bio: formData.get('bio'),
+            city: formData.get('city'),
+            country: formData.get('country'),
+            latitude: this.userLocation.latitude,
+            longitude: this.userLocation.longitude,
+            location_type: this.userLocation.latitude ? 'auto' : 'manual'
+        };
+
+        try {
+            const response = await fetch('/api/profile', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.authToken}`
+                },
+                body: JSON.stringify(profileData)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert('Profile updated successfully!');
+                this.fetchUserProfile();
+                this.hideError('profileError');
+            } else {
+                this.showError('profileError', result.error);
+            }
+        } catch (error) {
+            this.showError('profileError', 'Network error. Please try again.');
+        }
     }
 
     // Handle add skill
@@ -369,8 +487,85 @@ class SkillSwapApp {
         div.innerHTML = `
             <div class="skill-name">${skill.skill_name}</div>
             <div class="skill-description">${skill.description || 'No description provided'}</div>
+            <div class="skill-actions">
+                <button class="btn-icon" onclick="app.openEditSkillModal(${skill.id}, '${skill.skill_name.replace(/'/g, "\\'")}', '${(skill.description || '').replace(/'/g, "\\'")}')">✏️</button>
+                <button class="btn-icon" onclick="app.deleteSkill(${skill.id})">🗑️</button>
+            </div>
         `;
         return div;
+    }
+
+    // Open edit skill modal
+    openEditSkillModal(skillId, skillName, description) {
+        document.getElementById('editSkillId').value = skillId;
+        document.getElementById('editSkillName').value = skillName;
+        document.getElementById('editSkillDescription').value = description;
+        document.getElementById('editSkillModal').style.display = 'block';
+    }
+
+    // Close edit skill modal
+    closeEditSkillModal() {
+        document.getElementById('editSkillModal').style.display = 'none';
+    }
+
+    // Handle edit skill
+    async handleEditSkill(e) {
+        const formData = new FormData(e.target);
+        const skillId = document.getElementById('editSkillId').value;
+        const skillData = {
+            skill_name: formData.get('skill_name'),
+            description: formData.get('description')
+        };
+
+        try {
+            const response = await fetch(`/api/skills/${skillId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.authToken}`
+                },
+                body: JSON.stringify(skillData)
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.closeEditSkillModal();
+                this.loadSkills();
+                alert('Skill updated successfully!');
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (error) {
+            alert('Network error. Please try again.');
+        }
+    }
+
+    // Delete skill
+    async deleteSkill(skillId) {
+        if (!confirm('Are you sure you want to delete this skill?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/skills/${skillId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.loadSkills();
+                alert('Skill deleted successfully!');
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (error) {
+            alert('Network error. Please try again.');
+        }
     }
 
     // Load matches
@@ -411,18 +606,36 @@ class SkillSwapApp {
     createMatchElement(match) {
         const div = document.createElement('div');
         div.className = 'match-card';
+        
+        const locationInfo = match.city || match.country 
+            ? `<p><strong>📍 Location:</strong> ${[match.city, match.country].filter(Boolean).join(', ')}</p>`
+            : '';
+        
+        const distanceInfo = match.distance 
+            ? `<p><strong>🚗 Distance:</strong> ~${match.distance} km</p>`
+            : '';
+        
+        const modeInfo = match.suggested_mode
+            ? `<p><strong>💡 Suggested:</strong> <span class="suggested-mode">${match.suggested_mode}</span></p>`
+            : '';
+
         div.innerHTML = `
             <div class="match-header">
                 <div class="match-name">${match.username}</div>
                 <div class="match-rating">${match.rating || '0.00'} ⭐</div>
             </div>
             <div class="match-bio">${match.bio || 'No bio provided'}</div>
+            <div class="match-location">
+                ${locationInfo}
+                ${distanceInfo}
+                ${modeInfo}
+            </div>
             <div class="match-skills">
                 <p><strong>Teaches:</strong> ${match.teaches}</p>
                 <p><strong>Wants to learn:</strong> ${match.learns}</p>
             </div>
             <div class="match-actions">
-                <button class="btn btn-primary" onclick="app.openBookingModal(${match.id}, '${match.teaches}')">Request Session</button>
+                <button class="btn btn-primary" onclick='app.openBookingModal(${JSON.stringify(match).replace(/'/g, "&#39;")})'>Request Session</button>
                 <button class="btn btn-secondary" onclick="app.startChat(${match.id}, '${match.username}')">Send Message</button>
             </div>
         `;
@@ -430,9 +643,33 @@ class SkillSwapApp {
     }
 
     // Open booking modal
-    openBookingModal(receiverId, skill) {
-        document.getElementById('bookingReceiverId').value = receiverId;
-        document.getElementById('bookingSkill').value = skill;
+    openBookingModal(matchData) {
+        // Handle both old and new calling conventions
+        if (typeof matchData === 'object') {
+            this.currentMatchData = matchData;
+            document.getElementById('bookingReceiverId').value = matchData.id;
+            document.getElementById('bookingSkill').value = matchData.teaches;
+            
+            // Display session mode info
+            const modeInfoDiv = document.getElementById('sessionModeInfo');
+            if (matchData.distance !== null && matchData.distance !== undefined) {
+                const modeIcon = matchData.suggested_mode === 'online' ? '💻' : '🤝';
+                modeInfoDiv.innerHTML = `
+                    ${modeIcon} <strong>Distance:</strong> ~${matchData.distance} km<br>
+                    <strong>Recommended session mode:</strong> ${matchData.suggested_mode}
+                `;
+                modeInfoDiv.style.display = 'block';
+            } else {
+                modeInfoDiv.innerHTML = `💻 <strong>Recommended session mode:</strong> online (location not available)`;
+                modeInfoDiv.style.display = 'block';
+            }
+        } else {
+            // Legacy support
+            document.getElementById('bookingReceiverId').value = matchData;
+            document.getElementById('bookingSkill').value = arguments[1];
+            document.getElementById('sessionModeInfo').style.display = 'none';
+        }
+        
         document.getElementById('bookingModal').style.display = 'block';
     }
 
@@ -645,8 +882,13 @@ class SkillSwapApp {
             });
 
             if (response.ok) {
+                const result = await response.json();
                 input.value = '';
-                // Message will be displayed via WebSocket
+                
+                // Display the sent message immediately
+                const messageElement = this.createMessageElement(result.messageData);
+                document.getElementById('chatMessages').appendChild(messageElement);
+                document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
             } else {
                 const result = await response.json();
                 alert('Error: ' + result.error);
@@ -686,7 +928,58 @@ class SkillSwapApp {
             this.loadMatches();
         } else if (tabName === 'bookings') {
             this.loadBookings();
+        } else if (tabName === 'chat') {
+            this.loadConversations();
         }
+    }
+
+    // Load conversations list
+    async loadConversations() {
+        try {
+            const response = await fetch('/api/bookings', {
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                this.displayConversations(result.bookings);
+            }
+        } catch (error) {
+            console.error('Load conversations error:', error);
+        }
+    }
+
+    // Display conversations
+    displayConversations(bookings) {
+        const container = document.getElementById('conversationsList');
+        container.innerHTML = '';
+
+        if (bookings.length === 0) {
+            container.innerHTML = '<p style="color: #666; padding: 1rem;">No conversations yet. Connect with users from matches!</p>';
+            return;
+        }
+
+        // Get unique users from bookings
+        const uniqueUsers = new Map();
+        bookings.forEach(booking => {
+            const isReceiver = booking.receiver_id === this.currentUser.id;
+            const otherUserId = isReceiver ? booking.sender_id : booking.receiver_id;
+            const otherUsername = isReceiver ? booking.sender_username : booking.receiver_username;
+            
+            if (!uniqueUsers.has(otherUserId)) {
+                uniqueUsers.set(otherUserId, otherUsername);
+            }
+        });
+
+        uniqueUsers.forEach((username, userId) => {
+            const convElement = document.createElement('div');
+            convElement.className = 'conversation-item';
+            convElement.innerHTML = `<strong>${username}</strong>`;
+            convElement.onclick = () => this.startChat(userId, username);
+            container.appendChild(convElement);
+        });
     }
 
     // Show error message

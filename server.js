@@ -246,39 +246,79 @@ app.get('/api/skills', authenticateToken, (req, res) => {
     }
 });
 
+// Helper function to calculate distance between two coordinates (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+    
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+    
+    return Math.round(distance * 10) / 10; // Round to 1 decimal place
+}
+
 // Get matched users (users who teach what I want to learn and vice versa)
 app.get('/api/matches', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
         
-        // Complex query to find matches
-        const matchQuery = `
-            SELECT DISTINCT 
-                u.id, u.username, u.bio, u.rating,
-                teach_skills.skill_name as teaches,
-                learn_skills.skill_name as learns
-            FROM users u
-            JOIN skills teach_skills ON u.id = teach_skills.user_id AND teach_skills.type = 'teach'
-            JOIN skills learn_skills ON u.id = learn_skills.user_id AND learn_skills.type = 'learn'
-            WHERE u.id != ? 
-            AND (
-                teach_skills.skill_name IN (
-                    SELECT skill_name FROM skills WHERE user_id = ? AND type = 'learn'
-                )
-                OR learn_skills.skill_name IN (
-                    SELECT skill_name FROM skills WHERE user_id = ? AND type = 'teach'
-                )
-            )
-            ORDER BY u.rating DESC, u.username
-        `;
-        
-        db.query(matchQuery, [userId, userId, userId], (err, results) => {
+        // First get current user's location
+        db.query('SELECT latitude, longitude FROM users WHERE id = ?', [userId], (err, userResults) => {
             if (err) {
                 console.error('Database error:', err);
                 return res.status(500).json({ error: 'Database error' });
             }
 
-            res.json({ matches: results });
+            const userLat = userResults[0]?.latitude;
+            const userLon = userResults[0]?.longitude;
+
+            // Complex query to find matches with location data
+            const matchQuery = `
+                SELECT DISTINCT 
+                    u.id, u.username, u.bio, u.rating, u.city, u.country, u.latitude, u.longitude,
+                    teach_skills.skill_name as teaches,
+                    learn_skills.skill_name as learns
+                FROM users u
+                JOIN skills teach_skills ON u.id = teach_skills.user_id AND teach_skills.type = 'teach'
+                JOIN skills learn_skills ON u.id = learn_skills.user_id AND learn_skills.type = 'learn'
+                WHERE u.id != ? 
+                AND (
+                    teach_skills.skill_name IN (
+                        SELECT skill_name FROM skills WHERE user_id = ? AND type = 'learn'
+                    )
+                    OR learn_skills.skill_name IN (
+                        SELECT skill_name FROM skills WHERE user_id = ? AND type = 'teach'
+                    )
+                )
+                ORDER BY u.rating DESC, u.username
+            `;
+            
+            db.query(matchQuery, [userId, userId, userId], (err, results) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({ error: 'Database error' });
+                }
+
+                // Calculate distance for each match
+                const matchesWithDistance = results.map(match => {
+                    const distance = calculateDistance(userLat, userLon, match.latitude, match.longitude);
+                    
+                    return {
+                        ...match,
+                        distance: distance,
+                        suggested_mode: distance === null ? 'online' : (distance <= 50 ? 'offline or online' : 'online')
+                    };
+                });
+
+                res.json({ matches: matchesWithDistance });
+            });
         });
     } catch (error) {
         console.error('Get matches error:', error);
@@ -434,8 +474,8 @@ app.post('/api/messages', authenticateToken, (req, res) => {
                 timestamp: new Date()
             };
 
-            // Emit message to both users via WebSocket
-            io.to(`user_${sender_id}`).emit('message', messageData);
+            // Emit message only to receiver via WebSocket
+            // Sender will add it to UI directly from response
             io.to(`user_${receiver_id}`).emit('message', messageData);
 
             res.status(201).json({
@@ -483,7 +523,7 @@ app.get('/api/profile', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
         
-        const getUserQuery = 'SELECT id, username, email, bio, rating FROM users WHERE id = ?';
+        const getUserQuery = 'SELECT id, username, email, bio, rating, city, country, latitude, longitude, location_type FROM users WHERE id = ?';
         db.query(getUserQuery, [userId], (err, results) => {
             if (err) {
                 console.error('Database error:', err);
@@ -498,6 +538,109 @@ app.get('/api/profile', authenticateToken, (req, res) => {
         });
     } catch (error) {
         console.error('Get profile error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Update user profile (including location)
+app.put('/api/profile', authenticateToken, (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { bio, city, country, latitude, longitude, location_type } = req.body;
+
+        const updateQuery = 'UPDATE users SET bio = ?, city = ?, country = ?, latitude = ?, longitude = ?, location_type = ? WHERE id = ?';
+        db.query(updateQuery, [bio || '', city || null, country || null, latitude || null, longitude || null, location_type || 'manual', userId], (err, result) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Failed to update profile' });
+            }
+
+            res.json({ message: 'Profile updated successfully' });
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Delete skill
+app.delete('/api/skills/:id', authenticateToken, (req, res) => {
+    try {
+        const skillId = req.params.id;
+        const userId = req.user.userId;
+
+        // Check if skill belongs to user
+        const checkSkillQuery = 'SELECT id FROM skills WHERE id = ? AND user_id = ?';
+        db.query(checkSkillQuery, [skillId, userId], (err, results) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ error: 'Skill not found or unauthorized' });
+            }
+
+            // Delete skill
+            const deleteQuery = 'DELETE FROM skills WHERE id = ?';
+            db.query(deleteQuery, [skillId], (err, result) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({ error: 'Failed to delete skill' });
+                }
+
+                res.json({ message: 'Skill deleted successfully' });
+            });
+        });
+    } catch (error) {
+        console.error('Delete skill error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Update skill
+app.put('/api/skills/:id', authenticateToken, (req, res) => {
+    try {
+        const skillId = req.params.id;
+        const userId = req.user.userId;
+        const { skill_name, description } = req.body;
+
+        if (!skill_name) {
+            return res.status(400).json({ error: 'Skill name is required' });
+        }
+
+        // Check if skill belongs to user
+        const checkSkillQuery = 'SELECT id FROM skills WHERE id = ? AND user_id = ?';
+        db.query(checkSkillQuery, [skillId, userId], (err, results) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ error: 'Skill not found or unauthorized' });
+            }
+
+            // Update skill
+            const updateQuery = 'UPDATE skills SET skill_name = ?, description = ? WHERE id = ?';
+            db.query(updateQuery, [skill_name, description || '', skillId], (err, result) => {
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({ error: 'Failed to update skill' });
+                }
+
+                res.json({ 
+                    message: 'Skill updated successfully',
+                    skill: {
+                        id: skillId,
+                        skill_name: skill_name,
+                        description: description || ''
+                    }
+                });
+            });
+        });
+    } catch (error) {
+        console.error('Update skill error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
