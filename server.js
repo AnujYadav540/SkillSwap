@@ -66,7 +66,11 @@ class SQLiteConnection {
     }
 }
 
-const db = new SQLiteConnection('./skillswap.db');
+// Use persistent disk path in production, local path in development
+const dbPath = process.env.NODE_ENV === 'production' 
+    ? '/opt/render/project/src/data/skillswap.db' 
+    : './skillswap.db';
+const db = new SQLiteConnection(dbPath);
 
 // Connect to database (Mock connection for compatibility)
 db.connect((err) => {

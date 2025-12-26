@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: skillswap
+    env: node
+    plan: free
+    buildCommand: npm install && npm run init-db
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+    disk:
+      name: skillswap-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
