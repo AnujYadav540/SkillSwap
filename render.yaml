@@ -3,7 +3,7 @@ services:
     name: skillswap
     env: node
     plan: free
-    buildCommand: npm ci --build-from-source && npm run init-db
+    buildCommand: npm install && npm run init-db
     startCommand: node server.js
     envVars:
       - key: NODE_ENV

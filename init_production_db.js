@@ -1,10 +1,20 @@
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
 
-const dbPath = process.env.NODE_ENV === 'production' 
-    ? '/opt/render/project/src/data/skillswap.db' 
+const dbPath = process.env.NODE_ENV === 'production'
+    ? '/opt/render/project/src/data/skillswap.db'
     : './skillswap.db';
 
-const db = new sqlite3.Database(dbPath);
+// Ensure directory exists in production
+if (process.env.NODE_ENV === 'production') {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
+
+const db = new Database(dbPath);
 
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
@@ -59,11 +69,11 @@ CREATE TABLE IF NOT EXISTS bookings (
 );
 `;
 
-db.exec(schema, (err) => {
-    if (err) {
-        console.error('Database initialization failed:', err);
-        process.exit(1);
-    }
+try {
+    db.exec(schema);
     console.log('Database initialized successfully at:', dbPath);
     db.close();
-});
+} catch (err) {
+    console.error('Database initialization failed:', err);
+    process.exit(1);
+}

@@ -1,5 +1,5 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose(); // Changed from mysql2
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -23,59 +23,46 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database connection wrapper for SQLite
-class SQLiteConnection {
-    constructor(filename) {
-        this.db = new sqlite3.Database(filename);
-    }
+// Use persistent disk path in production, local path in development
+const dbPath = process.env.NODE_ENV === 'production'
+    ? '/opt/render/project/src/data/skillswap.db'
+    : './skillswap.db';
 
-    connect(callback) {
-        if (callback) callback(null);
-    }
+// Initialize better-sqlite3 database
+const sqlite = new Database(dbPath);
+sqlite.pragma('journal_mode = WAL');
 
-    query(sql, params, callback) {
+// Database wrapper to maintain compatibility with existing code
+const db = {
+    query: (sql, params, callback) => {
         if (typeof params === 'function') {
             callback = params;
             params = [];
         }
 
-        // SQLite doesn't support '?' placeholder with multiple insert syntax exactly same way sometimes, 
-        // but simple queries are fine. 
-        // Major diff: 'Show columns' or specific mysql queries. 
-        // Assuming standard queries for now.
+        try {
+            const isSelect = sql.trim().toUpperCase().startsWith('SELECT');
 
-        const method = sql.trim().toUpperCase().startsWith('SELECT') ? 'all' : 'run';
-
-        if (method === 'all') {
-            this.db.all(sql, params, (err, rows) => {
-                const results = rows || [];
-                // Simulate array access for single result check (results.length)
-                if (callback) callback(err, results);
-            });
-        } else {
-            this.db.run(sql, params, function (err) {
-                if (callback) {
-                    const result = {
-                        insertId: this.lastID,
-                        affectedRows: this.changes
-                    };
-                    callback(err, result);
-                }
-            });
+            if (isSelect) {
+                const stmt = sqlite.prepare(sql);
+                const results = stmt.all(...params);
+                if (callback) callback(null, results);
+            } else {
+                const stmt = sqlite.prepare(sql);
+                const info = stmt.run(...params);
+                const result = {
+                    insertId: info.lastInsertRowid,
+                    affectedRows: info.changes
+                };
+                if (callback) callback(null, result);
+            }
+        } catch (err) {
+            if (callback) callback(err, null);
         }
     }
-}
+};
 
-// Use persistent disk path in production, local path in development
-const dbPath = process.env.NODE_ENV === 'production' 
-    ? '/opt/render/project/src/data/skillswap.db' 
-    : './skillswap.db';
-const db = new SQLiteConnection(dbPath);
-
-// Connect to database (Mock connection for compatibility)
-db.connect((err) => {
-    console.log('Connected to SQLite database');
-});
+console.log('Connected to SQLite database (better-sqlite3)');
 
 // JWT middleware for protected routes
 const authenticateToken = (req, res, next) => {
