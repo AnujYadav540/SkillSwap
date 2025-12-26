@@ -1,5 +1,5 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -23,46 +23,41 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Use persistent disk path in production, local path in development
-const dbPath = process.env.NODE_ENV === 'production'
-    ? '/opt/render/project/src/data/skillswap.db'
-    : './skillswap.db';
+// Initialize Turso/LibSQL database
+const turso = createClient({
+    url: process.env.TURSO_DATABASE_URL || 'file:./skillswap.db',
+    authToken: process.env.TURSO_AUTH_TOKEN
+});
 
-// Initialize better-sqlite3 database
-const sqlite = new Database(dbPath);
-sqlite.pragma('journal_mode = WAL');
-
-// Database wrapper to maintain compatibility with existing code
+// Database wrapper to maintain compatibility with existing callback-based code
 const db = {
-    query: (sql, params, callback) => {
+    query: async (sql, params, callback) => {
         if (typeof params === 'function') {
             callback = params;
             params = [];
         }
 
         try {
+            const result = await turso.execute({ sql, args: params || [] });
             const isSelect = sql.trim().toUpperCase().startsWith('SELECT');
 
             if (isSelect) {
-                const stmt = sqlite.prepare(sql);
-                const results = stmt.all(...params);
-                if (callback) callback(null, results);
+                if (callback) callback(null, result.rows);
             } else {
-                const stmt = sqlite.prepare(sql);
-                const info = stmt.run(...params);
-                const result = {
-                    insertId: info.lastInsertRowid,
-                    affectedRows: info.changes
+                const response = {
+                    insertId: Number(result.lastInsertRowid),
+                    affectedRows: result.rowsAffected
                 };
-                if (callback) callback(null, result);
+                if (callback) callback(null, response);
             }
         } catch (err) {
+            console.error('Database error:', err);
             if (callback) callback(err, null);
         }
     }
 };
 
-console.log('Connected to SQLite database (better-sqlite3)');
+console.log('Connected to Turso database');
 
 // JWT middleware for protected routes
 const authenticateToken = (req, res, next) => {
