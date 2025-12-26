@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const sqlite3 = require('sqlite3').verbose(); // Changed from mysql2
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -23,22 +23,54 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database connection
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'skillswap',
-    port: process.env.DB_PORT || 3306
-});
-
-// Connect to database
-db.connect((err) => {
-    if (err) {
-        console.error('Database connection failed:', err);
-        process.exit(1);
+// Database connection wrapper for SQLite
+class SQLiteConnection {
+    constructor(filename) {
+        this.db = new sqlite3.Database(filename);
     }
-    console.log('Connected to MySQL database');
+
+    connect(callback) {
+        if (callback) callback(null);
+    }
+
+    query(sql, params, callback) {
+        if (typeof params === 'function') {
+            callback = params;
+            params = [];
+        }
+
+        // SQLite doesn't support '?' placeholder with multiple insert syntax exactly same way sometimes, 
+        // but simple queries are fine. 
+        // Major diff: 'Show columns' or specific mysql queries. 
+        // Assuming standard queries for now.
+
+        const method = sql.trim().toUpperCase().startsWith('SELECT') ? 'all' : 'run';
+
+        if (method === 'all') {
+            this.db.all(sql, params, (err, rows) => {
+                const results = rows || [];
+                // Simulate array access for single result check (results.length)
+                if (callback) callback(err, results);
+            });
+        } else {
+            this.db.run(sql, params, function (err) {
+                if (callback) {
+                    const result = {
+                        insertId: this.lastID,
+                        affectedRows: this.changes
+                    };
+                    callback(err, result);
+                }
+            });
+        }
+    }
+}
+
+const db = new SQLiteConnection('./skillswap.db');
+
+// Connect to database (Mock connection for compatibility)
+db.connect((err) => {
+    console.log('Connected to SQLite database');
 });
 
 // JWT middleware for protected routes
@@ -161,16 +193,23 @@ app.post('/api/login', (req, res) => {
                 { expiresIn: '24h' }
             );
 
+            const userData = {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                bio: user.bio,
+                rating: user.rating,
+                city: user.city,
+                country: user.country,
+                latitude: user.latitude,
+                longitude: user.longitude
+            };
+            console.log('DEBUG: Login response user data:', userData);
+
             res.json({
                 message: 'Login successful',
                 token: token,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    bio: user.bio,
-                    rating: user.rating
-                }
+                user: userData
             });
         });
     } catch (error) {
@@ -231,7 +270,7 @@ app.get('/api/skills', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
         const getSkillsQuery = 'SELECT * FROM skills WHERE user_id = ? ORDER BY type, skill_name';
-        
+
         db.query(getSkillsQuery, [userId], (err, results) => {
             if (err) {
                 console.error('Database error:', err);
@@ -249,18 +288,18 @@ app.get('/api/skills', authenticateToken, (req, res) => {
 // Helper function to calculate distance between two coordinates (Haversine formula)
 function calculateDistance(lat1, lon1, lat2, lon2) {
     if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-    
+
     const R = 6371; // Earth's radius in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    
+
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
-    
+
     return Math.round(distance * 10) / 10; // Round to 1 decimal place
 }
 
@@ -268,7 +307,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 app.get('/api/matches', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
-        
+
         // First get current user's location
         db.query('SELECT latitude, longitude FROM users WHERE id = ?', [userId], (err, userResults) => {
             if (err) {
@@ -299,7 +338,7 @@ app.get('/api/matches', authenticateToken, (req, res) => {
                 )
                 ORDER BY u.rating DESC, u.username
             `;
-            
+
             db.query(matchQuery, [userId, userId, userId], (err, results) => {
                 if (err) {
                     console.error('Database error:', err);
@@ -309,7 +348,7 @@ app.get('/api/matches', authenticateToken, (req, res) => {
                 // Calculate distance for each match
                 const matchesWithDistance = results.map(match => {
                     const distance = calculateDistance(userLat, userLon, match.latitude, match.longitude);
-                    
+
                     return {
                         ...match,
                         distance: distance,
@@ -344,7 +383,7 @@ app.post('/api/bookings', authenticateToken, (req, res) => {
             INSERT INTO bookings (sender_id, receiver_id, skill, session_date, notes) 
             VALUES (?, ?, ?, ?, ?)
         `;
-        
+
         db.query(insertBookingQuery, [sender_id, receiver_id, skill, session_date || null, notes || ''], (err, result) => {
             if (err) {
                 console.error('Database error:', err);
@@ -418,7 +457,7 @@ app.put('/api/bookings/:id', authenticateToken, (req, res) => {
 app.get('/api/bookings', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
-        
+
         const getBookingsQuery = `
             SELECT 
                 b.*,
@@ -430,7 +469,7 @@ app.get('/api/bookings', authenticateToken, (req, res) => {
             WHERE b.sender_id = ? OR b.receiver_id = ?
             ORDER BY b.created_at DESC
         `;
-        
+
         db.query(getBookingsQuery, [userId, userId], (err, results) => {
             if (err) {
                 console.error('Database error:', err);
@@ -503,7 +542,7 @@ app.get('/api/messages/:userId', authenticateToken, (req, res) => {
             WHERE (m.sender_id = ? AND m.receiver_id = ?) OR (m.sender_id = ? AND m.receiver_id = ?)
             ORDER BY m.timestamp ASC
         `;
-        
+
         db.query(getMessagesQuery, [currentUserId, otherUserId, otherUserId, currentUserId], (err, results) => {
             if (err) {
                 console.error('Database error:', err);
@@ -522,7 +561,7 @@ app.get('/api/messages/:userId', authenticateToken, (req, res) => {
 app.get('/api/profile', authenticateToken, (req, res) => {
     try {
         const userId = req.user.userId;
-        
+
         const getUserQuery = 'SELECT id, username, email, bio, rating, city, country, latitude, longitude, location_type FROM users WHERE id = ?';
         db.query(getUserQuery, [userId], (err, results) => {
             if (err) {
@@ -629,7 +668,7 @@ app.put('/api/skills/:id', authenticateToken, (req, res) => {
                     return res.status(500).json({ error: 'Failed to update skill' });
                 }
 
-                res.json({ 
+                res.json({
                     message: 'Skill updated successfully',
                     skill: {
                         id: skillId,

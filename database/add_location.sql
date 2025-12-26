@@ -1,4 +1,4 @@
--- Add location fields to users table
+\-- Add location fields to users table
 ALTER TABLE users 
 ADD COLUMN city VARCHAR(100),
 ADD COLUMN country VARCHAR(100),
