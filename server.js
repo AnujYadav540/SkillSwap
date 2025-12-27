@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize Turso/LibSQL database
 const turso = createClient({
-    url: process.env.TURSO_DATABASE_URL || 'file:./skillswap.db',
+    url: process.env.TURSO_DATABASE_URL,
     authToken: process.env.TURSO_AUTH_TOKEN
 });
 
@@ -38,7 +38,7 @@ const db = {
         }
 
         try {
-            const result = await turso.execute({ sql, args: params || [] });
+            const result = await turso.execute(sql, params || []);
             const isSelect = sql.trim().toUpperCase().startsWith('SELECT');
 
             if (isSelect) {
@@ -57,7 +57,8 @@ const db = {
     }
 };
 
-console.log('Connected to Turso database');
+console.log('Turso URL:', process.env.TURSO_DATABASE_URL ? 'Set' : 'NOT SET');
+console.log('Turso Token:', process.env.TURSO_AUTH_TOKEN ? 'Set' : 'NOT SET');
 
 // JWT middleware for protected routes
 const authenticateToken = (req, res, next) => {
